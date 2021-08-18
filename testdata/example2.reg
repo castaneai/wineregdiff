@@ -1,0 +1,20 @@
+WINE REGISTRY Version 2
+
+[Parent Key\\Same Key] 1628790650
+@="default"
+"StringValue"="hello \"world\""
+
+[Example2 Only Key] 1628790650
+@="default"
+"StringValue"="hello \"world2\""
+
+[Parent Key\\Example2 Only Sub Key] 1628790650
+@="default"
+"StringValue"="hello \"world2\""
+
+[Parent Key\\Changed Sub Key] 1628790650
+"StringValue"="hello \"world2\""
+"DwordValue"=dword:00000003
+"HexValue"=hex:00,01,02
+"UnknownValue"=hex(6):ab,cd,\
+  ef,12

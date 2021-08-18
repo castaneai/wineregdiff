@@ -23,7 +23,7 @@ type DefaultValueComparator struct {
 }
 
 func (c *DefaultValueComparator) CompareValue(key Key, value1, value2 Value) (ValueDiff, error) {
-	diff := NewValueDiff(key)
+	diff := NewValueDiff()
 	for _, ignoreKey := range c.IgnoreKeys {
 		if key == ignoreKey {
 			return diff, nil
