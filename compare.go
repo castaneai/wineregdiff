@@ -3,13 +3,16 @@ package wineregdiff
 import "fmt"
 
 type DataComparator interface {
-	CompareData(name DataName, data1, data2 interface{}) (bool, error)
+	CompareData(name DataName, data1, data2 Data) (bool, error)
 }
 
 type DefaultDataComparator struct {
 }
 
-func (c *DefaultDataComparator) CompareData(name DataName, data1, data2 interface{}) (bool, error) {
+func (c *DefaultDataComparator) CompareData(name DataName, data1, data2 Data) (bool, error) {
+	if data1.DataType() != data2.DataType() {
+		return false, nil
+	}
 	return fmt.Sprintf("%s", data1) == fmt.Sprintf("%s", data2), nil
 }
 

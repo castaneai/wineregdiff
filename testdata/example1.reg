@@ -13,8 +13,11 @@ WINE REGISTRY Version 2
 "StringValue"="hello \"world\""
 
 [Parent Key\\Changed Sub Key] 1628790650
+@="default"
 "StringValue"="hello \"world\""
 "DwordValue"=dword:00000003
 "HexValue"=hex:00,01,02
 "UnknownValue"=hex(6):ab,cd,\
   ef
+
+[Example1 Only Key Only] 1628790650

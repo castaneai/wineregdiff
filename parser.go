@@ -9,11 +9,6 @@ import (
 	"strings"
 )
 
-type Registry map[Key]Value
-type Key string
-type Value map[DataName]Data
-type DataName string
-
 const (
 	fileHeader = "WINE REGISTRY Version 2"
 )
@@ -39,15 +34,15 @@ func Parse(r io.Reader) (Registry, error) {
 			matches := keyPattern.FindStringSubmatch(line)
 			key, _ := Key(parseQuotedString(matches[1])), matches[2]
 			subKey = &key
-		case strings.HasPrefix(line, `"`):
+			if _, ok := reg[*subKey]; !ok {
+				reg[*subKey] = Value{}
+			}
+		case strings.HasPrefix(line, `"`) || strings.HasPrefix(line, string(UnnamedDataName)):
 			if subKey == nil {
 				return nil, errors.New("invalid value (no subkey)")
 			}
 			matches := valuePattern.FindStringSubmatch(line)
 			dataName, val := DataName(parseQuotedString(matches[1])), matches[2]
-			if _, ok := reg[*subKey]; !ok {
-				reg[*subKey] = Value{}
-			}
 			data, err := ParseData(val)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse data(key: %s, name: %s): %+v", *subKey, dataName, err)
@@ -104,6 +99,12 @@ func (s *wineRegScanner) Scan() bool {
 
 func (s *wineRegScanner) Text() string {
 	return s.line
+}
+
+func escapeString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
 }
 
 func parseQuotedString(s string) string {

@@ -1,14 +1,18 @@
 package wineregdiff
 
 import (
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
+type DataType int
+
 const (
 	// https://github.com/wine-mirror/wine/blob/e909986e6ea5ecd49b2b847f321ad89b2ae4f6f1/include/winnt.h#L5571
+	DataTypeRegNone           DataType = 0
 	DataTypeRegSZ             DataType = 1
 	DataTypeRegExpandSZ       DataType = 2
 	DataTypeRegBinary         DataType = 3
@@ -18,10 +22,27 @@ const (
 	DataTypeRegMultiSZ        DataType = 7
 )
 
-type DataType int
+func (t DataType) String() string {
+	switch t {
+	case DataTypeRegSZ:
+		return "REG_SZ"
+	case DataTypeRegExpandSZ:
+		return "REG_EXPAND_SZ"
+	case DataTypeRegBinary:
+		return "REG_BINARY"
+	case DataTypeRegDWord:
+		return "REG_DWORD"
+	case DataTypeRegMultiSZ:
+		return "REG_MULTI_SZ"
+	default:
+		return "REG_NONE"
+	}
+}
+
 type Data interface {
 	fmt.Stringer
 	DataType() DataType
+	CommandString() string
 }
 
 var (
@@ -36,6 +57,9 @@ func (d StringData) DataType() DataType {
 func (d StringData) String() string {
 	return string(d)
 }
+func (d StringData) CommandString() string {
+	return escapeString(string(d))
+}
 
 type DwordData uint32
 
@@ -45,6 +69,9 @@ func (d DwordData) DataType() DataType {
 func (d DwordData) String() string {
 	return fmt.Sprintf("dword:%08x", uint32(d))
 }
+func (d DwordData) CommandString() string {
+	return fmt.Sprintf("%d", uint32(d))
+}
 
 type BinaryData []byte
 
@@ -53,6 +80,9 @@ func (d BinaryData) DataType() DataType {
 }
 func (d BinaryData) String() string {
 	return fmt.Sprintf("hex:%s", asHex(d))
+}
+func (d BinaryData) CommandString() string {
+	return hex.EncodeToString(d)
 }
 
 // REG_NONE, REG_EXPAND_SZ, REG_MULTI_SZ, ...
@@ -66,7 +96,10 @@ func (d *UnknownData) DataType() DataType {
 	return d.dataType
 }
 func (d *UnknownData) String() string {
-	return fmt.Sprintf("hex(%x):%s", d.DataType(), asHex(d.Data))
+	return fmt.Sprintf("hex(%x):%s", int(d.DataType()), asHex(d.Data))
+}
+func (d *UnknownData) CommandString() string {
+	return hex.EncodeToString(d.Data)
 }
 
 // https://github.com/wine-mirror/wine/blob/60a3e0106246cb91d598a815d4fadf2791011142/programs/reg/import.c#L249
@@ -108,11 +141,11 @@ func parseHex(s string) ([]byte, error) {
 	digits := strings.Split(s, ",")
 	var data []byte
 	for _, d := range digits {
-		hex, err := strconv.ParseUint(d, 16, 8)
+		hexd, err := strconv.ParseUint(d, 16, 8)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse as binary('%s'): %+v", s, err)
 		}
-		data = append(data, byte(hex))
+		data = append(data, byte(hexd))
 	}
 	return data, nil
 }
