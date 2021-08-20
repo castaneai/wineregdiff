@@ -2,6 +2,12 @@
 
 compare wine registry files and generate commands to apply the changes.
 
+## Install
+
+```
+go install github.com/castaneai/wineregdiff@latest
+```
+
 ## Usage
 
 ```
@@ -10,3 +16,7 @@ $ winetricks renderer=gdi
 $ wineregdiff -root HKCU -force user_old.reg $WINEPREFIX/user.reg
 wine REG ADD "HKEY_CURRENT_USER\\Software\\Wine\\Direct3D" /v "renderer" /t REG_SZ /d "gdi" /f
 ```
+
+## License
+
+MIT
