@@ -46,6 +46,7 @@ type Data interface {
 }
 
 var (
+	stringTagPattern      = regexp.MustCompile(`^str\(([0-9a-fA-F]+)\):(.+)`)
 	unknownDataTagPattern = regexp.MustCompile(`^hex\(([0-9a-fA-F]+)\):(.+)`)
 )
 
@@ -59,6 +60,34 @@ func (d StringData) String() string {
 }
 func (d StringData) CommandString() string {
 	return escapeString(string(d))
+}
+
+type ExpandStringData string
+
+func (d ExpandStringData) DataType() DataType {
+	return DataTypeRegExpandSZ
+}
+
+func (d ExpandStringData) String() string {
+	return string(d)
+}
+
+func (d ExpandStringData) CommandString() string {
+	return escapeString(string(d))
+}
+
+type MultiStringData []string
+
+func (d MultiStringData) DataType() DataType {
+	return DataTypeRegMultiSZ
+}
+
+func (d MultiStringData) String() string {
+	return strings.Join(d, `\0`)
+}
+
+func (d MultiStringData) CommandString() string {
+	return escapeString(d.String())
 }
 
 type DwordData uint32
@@ -122,7 +151,23 @@ func ParseData(s string) (Data, error) {
 		}
 		return BinaryData(data), nil
 	}
-	matches := unknownDataTagPattern.FindStringSubmatch(s)
+	matches := stringTagPattern.FindStringSubmatch(s)
+	if len(matches) > 2 {
+		dt, err := strconv.ParseUint(matches[1], 16, 32)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse unknown type as hex('%s'): %+v", s, err)
+		}
+		dataType := DataType(dt)
+		switch dataType {
+		case DataTypeRegExpandSZ:
+			data := parseQuotedString(matches[2])
+			return ExpandStringData(data), nil
+		case DataTypeRegMultiSZ:
+			data := strings.Split(parseQuotedString(matches[2]), `\0`)
+			return MultiStringData(data), nil
+		}
+	}
+	matches = unknownDataTagPattern.FindStringSubmatch(s)
 	if len(matches) > 2 {
 		dataType, err := strconv.ParseUint(matches[1], 16, 32)
 		if err != nil {

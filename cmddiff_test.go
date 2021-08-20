@@ -2,6 +2,7 @@ package wineregdiff
 
 import (
 	"log"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,7 +19,7 @@ func TestGenerateRegCommands(t *testing.T) {
 		log.Printf("--- %s", changesFor)
 		cmds := GenerateRegCommands(diff, RegistryRootLocalMachine, changesFor, true)
 		for _, cmd := range cmds {
-			log.Printf("wine " + cmd)
+			log.Printf("wine " + strings.Join(cmd.Args, " "))
 		}
 	}
 

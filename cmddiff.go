@@ -20,67 +20,80 @@ func (c ChangesFor) String() string {
 	}
 }
 
-func GenerateRegCommands(diff RegistryDiff, root RegistryRoot, changesFor ChangesFor, force bool) []string {
-	var cmds []string
+type RegCommand struct {
+	Args []string
+}
+
+func GenerateRegCommands(diff RegistryDiff, root RegistryRoot, changesFor ChangesFor, force bool) []RegCommand {
+	var cmds []RegCommand
 	addDiff := diff.Registry2Only
 	deleteDiff := diff.Registry1Only
 	if changesFor == ChangesFor2 {
 		addDiff, deleteDiff = deleteDiff, addDiff
 	}
 	for key, value := range addDiff {
-		cmds = append(cmds, addCommand(root, key, value, force)...)
+		cmds = append(cmds, addCommand(root, key, value, force))
 	}
 	for key, value := range deleteDiff {
-		cmds = append(cmds, deleteCommand(root, key, value, force)...)
+		cmds = append(cmds, deleteCommand(root, key, value, force))
 	}
 	for key, changed := range diff.RegistryChanged {
 		switch changesFor {
 		case ChangesFor1:
-			cmds = append(cmds, addCommand(root, key, changed.Value2, force)...)
+			cmds = append(cmds, addCommand(root, key, changed.Value2, force))
 		case ChangesFor2:
-			cmds = append(cmds, addCommand(root, key, changed.Value1, force)...)
+			cmds = append(cmds, addCommand(root, key, changed.Value1, force))
 		}
 	}
 	return cmds
 }
 
-func addCommand(root RegistryRoot, key Key, value Value, force bool) []string {
-	var cmds []string
+func addCommand(root RegistryRoot, key Key, value Value, force bool) RegCommand {
+	cmd := RegCommand{
+		Args: []string{"REG", "ADD"},
+	}
 	keyName := escapeString(fmt.Sprintf(`%s\%s`, root, key))
+	cmd.Args = append(cmd.Args, fmt.Sprintf(`"%s"`, keyName))
 	if len(value) == 0 {
-		return []string{fmt.Sprintf(`REG ADD "%s"`, keyName)}
+		return cmd
 	}
 	for dataName, data := range value {
-		v := fmt.Sprintf(`/v "%s"`, dataName)
+		v := "/v"
 		if dataName == UnnamedDataName {
-			v = `/ve`
+			v = "/ve"
 		}
-		cmd := fmt.Sprintf(`REG ADD "%s" %s /t %s /d "%s"`,
-			keyName, v, data.DataType(), data.CommandString())
+		cmd.Args = append(cmd.Args, []string{
+			v, fmt.Sprintf(`"%s"`, dataName),
+			fmt.Sprintf("/t"), data.DataType().String(),
+			"/d", fmt.Sprintf(`"%s"`, data.CommandString()),
+		}...)
 		if force {
-			cmd += " /f"
+			cmd.Args = append(cmd.Args, "/f")
 		}
-		cmds = append(cmds, cmd)
 	}
-	return cmds
+	return cmd
 }
 
-func deleteCommand(root RegistryRoot, key Key, value Value, force bool) []string {
-	var cmds []string
+func deleteCommand(root RegistryRoot, key Key, value Value, force bool) RegCommand {
+	cmd := RegCommand{
+		Args: []string{"REG", "DELETE"},
+	}
 	keyName := escapeString(fmt.Sprintf(`%s\%s`, root, key))
+	cmd.Args = append(cmd.Args, fmt.Sprintf(`"%s"`, keyName))
 	if len(value) == 0 {
-		return []string{fmt.Sprintf(`REG DELETE "%s"`, keyName)}
+		return cmd
 	}
 	for dataName := range value {
-		v := fmt.Sprintf(`/v "%s"`, dataName)
+		v := "/v"
 		if dataName == UnnamedDataName {
-			v = `/ve`
+			v = "/ve"
 		}
-		cmd := fmt.Sprintf(`REG DELETE "%s" %s`, keyName, v)
+		cmd.Args = append(cmd.Args, []string{
+			v, fmt.Sprintf(`"%s"`, dataName),
+		}...)
 		if force {
-			cmd += " /f"
+			cmd.Args = append(cmd.Args, "/f")
 		}
-		cmds = append(cmds, cmd)
 	}
-	return cmds
+	return cmd
 }
