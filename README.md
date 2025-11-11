@@ -5,7 +5,7 @@ compare wine registry files and generate commands to apply the changes.
 ## Install
 
 ```
-go install github.com/castaneai/wineregdiff@latest
+go install github.com/castaneai/wineregdiff/cmd/wineregdiff@latest
 ```
 
 ## Usage
