@@ -183,6 +183,9 @@ func ParseData(s string) (Data, error) {
 }
 
 func parseHex(s string) ([]byte, error) {
+	if s == "" {
+		return []byte{}, nil
+	}
 	digits := strings.Split(s, ",")
 	var data []byte
 	for _, d := range digits {
