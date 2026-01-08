@@ -17,47 +17,86 @@ var (
 	errNotWineRegistryFile = errors.New("not a wine registry file (header not found)")
 	keyPattern             = regexp.MustCompile(`\[(.+)]\s+(\d+)`)
 	valuePattern           = regexp.MustCompile(`(".+"|@)=(.+)`)
+	archPattern            = regexp.MustCompile(`^#arch=(.+)`)
+	timePattern            = regexp.MustCompile(`^#time=([0-9a-fA-F]+)`)
 )
 
 func Parse(r io.Reader) (Registry, error) {
-	scanner, err := newWineRegScanner(r)
+	rf, err := ParseFile(r)
 	if err != nil {
 		return nil, err
 	}
-	reg := Registry{}
+	return rf.Registry, nil
+}
+
+// ParseFile parses a Wine registry file and returns a RegistryFile with metadata
+func ParseFile(r io.Reader) (*RegistryFile, error) {
+	scanner, err := newWineRegScannerWithMetadata(r)
+	if err != nil {
+		return nil, err
+	}
+
+	rf := NewRegistryFile()
+	rf.FileMetadata.Comment = scanner.comment
+	rf.FileMetadata.Arch = scanner.arch
+
 	var subKey *Key
+	var currentTimestamp int64
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		switch {
 		case strings.HasPrefix(line, "["):
 			matches := keyPattern.FindStringSubmatch(line)
-			key, _ := Key(parseQuotedString(matches[1])), matches[2]
+			if len(matches) < 3 {
+				continue
+			}
+			key := Key(parseQuotedString(matches[1]))
+			timestamp := matches[2]
 			subKey = &key
-			if _, ok := reg[*subKey]; !ok {
-				reg[*subKey] = Value{}
+			if _, ok := rf.Registry[*subKey]; !ok {
+				rf.Registry[*subKey] = Value{}
+			}
+			// Parse timestamp
+			var ts int64
+			fmt.Sscanf(timestamp, "%d", &ts)
+			currentTimestamp = ts
+		case strings.HasPrefix(line, "#time="):
+			if subKey != nil {
+				matches := timePattern.FindStringSubmatch(line)
+				if len(matches) >= 2 {
+					rf.KeyMetadata[*subKey] = KeyMetadata{
+						Timestamp: currentTimestamp,
+						Time:      matches[1],
+					}
+				}
 			}
 		case strings.HasPrefix(line, `"`) || strings.HasPrefix(line, string(UnnamedDataName)):
 			if subKey == nil {
 				return nil, errors.New("invalid value (no subkey)")
 			}
 			matches := valuePattern.FindStringSubmatch(line)
+			if len(matches) < 3 {
+				continue
+			}
 			dataName, val := DataName(parseQuotedString(matches[1])), matches[2]
 			data, err := ParseData(val)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse data(key: %s, name: %s): %+v", *subKey, dataName, err)
 			}
-			reg[*subKey][dataName] = data
+			rf.Registry[*subKey][dataName] = data
 		default:
-			// ignore comment lines (starting with ";") and other lines
+			// ignore other lines
 		}
 	}
-	return reg, nil
+	return rf, nil
 }
 
 type wineRegScanner struct {
-	sc   *bufio.Scanner
-	line string
+	sc      *bufio.Scanner
+	line    string
+	comment string
+	arch    string
 }
 
 func newWineRegScanner(r io.Reader) (*wineRegScanner, error) {
@@ -73,7 +112,45 @@ func newWineRegScanner(r io.Reader) (*wineRegScanner, error) {
 	}, nil
 }
 
+func newWineRegScannerWithMetadata(r io.Reader) (*wineRegScanner, error) {
+	sc := bufio.NewScanner(r)
+	if !sc.Scan() {
+		return nil, errNotWineRegistryFile
+	}
+	if sc.Text() != fileHeader {
+		return nil, errNotWineRegistryFile
+	}
+
+	scanner := &wineRegScanner{sc: sc}
+
+	// Read metadata lines until we hit a key or EOF
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, ";;") {
+			scanner.comment = strings.TrimPrefix(line, ";; ")
+			continue
+		}
+		if matches := archPattern.FindStringSubmatch(line); len(matches) >= 2 {
+			scanner.arch = matches[1]
+			continue
+		}
+		// If we hit a key, put it back by storing in line
+		if strings.HasPrefix(line, "[") {
+			scanner.line = line
+			return scanner, nil
+		}
+	}
+	return scanner, nil
+}
+
 func (s *wineRegScanner) Scan() bool {
+	// If line is already set (from metadata scanning), return it first
+	if s.line != "" {
+		return true
+	}
 	if !s.sc.Scan() {
 		return false
 	}
@@ -99,7 +176,9 @@ func (s *wineRegScanner) Scan() bool {
 }
 
 func (s *wineRegScanner) Text() string {
-	return s.line
+	line := s.line
+	s.line = "" // Clear line so next Scan() reads from scanner
+	return line
 }
 
 func escapeString(s string) string {
