@@ -48,7 +48,7 @@ type Data interface {
 
 var (
 	stringTagPattern      = regexp.MustCompile(`^str\(([0-9a-fA-F]+)\):(.+)`)
-	unknownDataTagPattern = regexp.MustCompile(`^hex\(([0-9a-fA-F]+)\):(.+)`)
+	unknownDataTagPattern = regexp.MustCompile(`^hex\(([0-9a-fA-F]+)\):(.*)`)
 )
 
 type StringData string
