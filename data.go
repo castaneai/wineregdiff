@@ -43,6 +43,7 @@ type Data interface {
 	fmt.Stringer
 	DataType() DataType
 	CommandString() string
+	RegFileString() string
 }
 
 var (
@@ -55,11 +56,17 @@ type StringData string
 func (d StringData) DataType() DataType {
 	return DataTypeRegSZ
 }
+
 func (d StringData) String() string {
 	return string(d)
 }
+
 func (d StringData) CommandString() string {
 	return escapeString(string(d))
+}
+
+func (d StringData) RegFileString() string {
+	return fmt.Sprintf(`"%s"`, escapeRegFileString(string(d)))
 }
 
 type ExpandStringData string
@@ -76,6 +83,10 @@ func (d ExpandStringData) CommandString() string {
 	return escapeString(string(d))
 }
 
+func (d ExpandStringData) RegFileString() string {
+	return fmt.Sprintf("hex(2):%s", toUTF16LEHex(string(d)))
+}
+
 type MultiStringData []string
 
 func (d MultiStringData) DataType() DataType {
@@ -90,16 +101,26 @@ func (d MultiStringData) CommandString() string {
 	return escapeString(d.String())
 }
 
+func (d MultiStringData) RegFileString() string {
+	return fmt.Sprintf("hex(7):%s", toUTF16LEHexMulti(d))
+}
+
 type DwordData uint32
 
 func (d DwordData) DataType() DataType {
 	return DataTypeRegDWord
 }
+
 func (d DwordData) String() string {
 	return fmt.Sprintf("dword:%08x", uint32(d))
 }
+
 func (d DwordData) CommandString() string {
 	return fmt.Sprintf("%d", uint32(d))
+}
+
+func (d DwordData) RegFileString() string {
+	return fmt.Sprintf("dword:%08x", uint32(d))
 }
 
 type BinaryData []byte
@@ -107,11 +128,17 @@ type BinaryData []byte
 func (d BinaryData) DataType() DataType {
 	return DataTypeRegBinary
 }
+
 func (d BinaryData) String() string {
 	return fmt.Sprintf("hex:%s", asHex(d))
 }
+
 func (d BinaryData) CommandString() string {
 	return hex.EncodeToString(d)
+}
+
+func (d BinaryData) RegFileString() string {
+	return fmt.Sprintf("hex:%s", asHex(d))
 }
 
 // REG_NONE, REG_EXPAND_SZ, REG_MULTI_SZ, ...
@@ -124,11 +151,17 @@ type UnknownData struct {
 func (d *UnknownData) DataType() DataType {
 	return d.dataType
 }
+
 func (d *UnknownData) String() string {
 	return fmt.Sprintf("hex(%x):%s", int(d.DataType()), asHex(d.Data))
 }
+
 func (d *UnknownData) CommandString() string {
 	return hex.EncodeToString(d.Data)
+}
+
+func (d *UnknownData) RegFileString() string {
+	return fmt.Sprintf("hex(%x):%s", int(d.DataType()), asHex(d.Data))
 }
 
 // https://github.com/wine-mirror/wine/blob/60a3e0106246cb91d598a815d4fadf2791011142/programs/reg/import.c#L249
@@ -204,4 +237,52 @@ func asHex(data []byte) string {
 		ss = append(ss, fmt.Sprintf("%02x", b))
 	}
 	return strings.Join(ss, ",")
+}
+
+func escapeRegFileString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
+func toUTF16LEHex(s string) string {
+	var data []byte
+	for _, r := range s {
+		// UTF-16LE encoding
+		if r <= 0xFFFF {
+			data = append(data, byte(r), byte(r>>8))
+		} else {
+			// Surrogate pair for characters > 0xFFFF
+			r -= 0x10000
+			high := 0xD800 + (r >> 10)
+			low := 0xDC00 + (r & 0x3FF)
+			data = append(data, byte(high), byte(high>>8))
+			data = append(data, byte(low), byte(low>>8))
+		}
+	}
+	// Null terminator
+	data = append(data, 0x00, 0x00)
+	return asHex(data)
+}
+
+func toUTF16LEHexMulti(ss []string) string {
+	var data []byte
+	for _, s := range ss {
+		for _, r := range s {
+			if r <= 0xFFFF {
+				data = append(data, byte(r), byte(r>>8))
+			} else {
+				r -= 0x10000
+				high := 0xD800 + (r >> 10)
+				low := 0xDC00 + (r & 0x3FF)
+				data = append(data, byte(high), byte(high>>8))
+				data = append(data, byte(low), byte(low>>8))
+			}
+		}
+		// Null terminator for each string
+		data = append(data, 0x00, 0x00)
+	}
+	// Double null terminator at the end
+	data = append(data, 0x00, 0x00)
+	return asHex(data)
 }

@@ -48,7 +48,8 @@ func Parse(r io.Reader) (Registry, error) {
 				return nil, fmt.Errorf("failed to parse data(key: %s, name: %s): %+v", *subKey, dataName, err)
 			}
 			reg[*subKey][dataName] = data
-		case strings.HasPrefix(line, ";"): // comment
+		default:
+			// ignore comment lines (starting with ";") and other lines
 		}
 	}
 	return reg, nil

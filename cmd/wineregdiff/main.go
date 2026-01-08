@@ -14,6 +14,7 @@ var (
 	changesForIn = flag.String("changes-for", "1", `Controls the direction of the diff("1" or "2").`)
 	rootIn       = flag.String("root", "HKLM", "Registry root key. HKLM|HKCU|HKCR|HKU|HKCC")
 	force        = flag.Bool("force", false, "Add the /f flag to the generated command.")
+	format       = flag.String("format", "regcmd", "Output format. regcmd|regfile")
 )
 
 func main() {
@@ -36,7 +37,7 @@ func main() {
 		log.Println(err.Error())
 		os.Exit(2)
 	}
-	if err := run(args[0], args[1], regRoot, changesFor, *force); err != nil {
+	if err := run(args[0], args[1], regRoot, changesFor, *force, *format); err != nil {
 		log.Println(err.Error())
 		os.Exit(1)
 	}
@@ -49,7 +50,7 @@ func usage() {
 	flag.PrintDefaults()
 }
 
-func run(file1, file2 string, root wineregdiff.RegistryRoot, changesFor wineregdiff.ChangesFor, force bool) error {
+func run(file1, file2 string, root wineregdiff.RegistryRoot, changesFor wineregdiff.ChangesFor, force bool, format string) error {
 	reg1, err := parseRegFile(file1)
 	if err != nil {
 		return err
@@ -62,9 +63,17 @@ func run(file1, file2 string, root wineregdiff.RegistryRoot, changesFor wineregd
 	if err != nil {
 		return err
 	}
-	regCmds := wineregdiff.GenerateRegCommands(diff, root, changesFor, force)
-	for _, cmd := range regCmds {
-		log.Printf("wine %s", strings.Join(cmd.Args, " "))
+	switch format {
+	case "regcmd":
+		regCmds := wineregdiff.GenerateRegCommands(diff, root, changesFor, force)
+		for _, cmd := range regCmds {
+			log.Printf("wine %s", strings.Join(cmd.Args, " "))
+		}
+	case "regfile":
+		output := wineregdiff.GenerateRegFile(diff, root, changesFor)
+		fmt.Print(output)
+	default:
+		return fmt.Errorf("invalid format: '%s' (expected: regcmd, regfile)", format)
 	}
 	return nil
 }
