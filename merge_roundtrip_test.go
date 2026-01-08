@@ -2,7 +2,6 @@ package wineregdiff
 
 import (
 	"bytes"
-	"io"
 	"os"
 	"testing"
 
