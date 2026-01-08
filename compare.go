@@ -1,7 +1,5 @@
 package wineregdiff
 
-import "fmt"
-
 type DataComparator interface {
 	CompareData(name DataName, data1, data2 Data) (bool, error)
 }
@@ -13,7 +11,7 @@ func (c *DefaultDataComparator) CompareData(name DataName, data1, data2 Data) (b
 	if data1.DataType() != data2.DataType() {
 		return false, nil
 	}
-	return fmt.Sprintf("%s", data1) == fmt.Sprintf("%s", data2), nil
+	return data1.String() == data2.String(), nil
 }
 
 type ValueComparator interface {

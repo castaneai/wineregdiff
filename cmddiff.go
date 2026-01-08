@@ -64,7 +64,7 @@ func addCommand(root RegistryRoot, key Key, value Value, force bool) RegCommand 
 		}
 		cmd.Args = append(cmd.Args, []string{
 			v, fmt.Sprintf(`"%s"`, dataName),
-			fmt.Sprintf("/t"), data.DataType().String(),
+			"/t", data.DataType().String(),
 			"/d", fmt.Sprintf(`"%s"`, data.CommandString()),
 		}...)
 		if force {
