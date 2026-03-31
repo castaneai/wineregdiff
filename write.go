@@ -53,25 +53,34 @@ func WriteRegistryFile(w io.Writer, rf *RegistryFile) error {
 			return err
 		}
 
-		// Use metadata timestamp if available, otherwise use current time
+		// Write key-level metadata in the same order as Wine's save_subkeys():
+		// https://github.com/wine-mirror/wine/blob/614887f33c5a0269d5e2feff6891e3e90d0f77ee/server/registry.c (save_subkeys)
 		keyTimestamp := timestamp
-		keyTime := ""
+		escapedKey := escapeWineKey(string(key))
 		if meta, ok := rf.KeyMetadata[key]; ok {
 			if meta.Timestamp != 0 {
 				keyTimestamp = meta.Timestamp
 			}
-			keyTime = meta.Time
-		}
-
-		// Write key (escaped path + timestamp)
-		escapedKey := escapeWineKey(string(key))
-		if _, err := fmt.Fprintf(w, "[%s] %d\n", escapedKey, keyTimestamp); err != nil {
-			return err
-		}
-
-		// Write #time if available
-		if keyTime != "" {
-			if _, err := fmt.Fprintf(w, "#time=%s\n", keyTime); err != nil {
+			if _, err := fmt.Fprintf(w, "[%s] %d\n", escapedKey, keyTimestamp); err != nil {
+				return err
+			}
+			if meta.Time != "" {
+				if _, err := fmt.Fprintf(w, "#time=%s\n", meta.Time); err != nil {
+					return err
+				}
+			}
+			if meta.Class != "" {
+				if _, err := fmt.Fprintf(w, "#class=\"%s\"\n", escapeWineString(meta.Class)); err != nil {
+					return err
+				}
+			}
+			if meta.Link {
+				if _, err := fmt.Fprintln(w, "#link"); err != nil {
+					return err
+				}
+			}
+		} else {
+			if _, err := fmt.Fprintf(w, "[%s] %d\n", escapedKey, keyTimestamp); err != nil {
 				return err
 			}
 		}
@@ -138,8 +147,50 @@ func dataToWineString(data Data) string {
 	}
 }
 
+// escapeWineString escapes a string for Wine registry format.
+// Wine uses \\ for backslash, \" for quotes, C-style escapes for control chars,
+// and \xNNNN for non-ASCII characters (UTF-16 code units).
+// https://github.com/wine-mirror/wine/blob/614887f33c5a0269d5e2feff6891e3e90d0f77ee/server/unicode.c (dump_strW)
 func escapeWineString(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	return s
+	var buf strings.Builder
+	buf.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == '\\':
+			buf.WriteString(`\\`)
+		case r == '"':
+			buf.WriteString(`\"`)
+		case r == '\a':
+			buf.WriteString(`\a`)
+		case r == '\b':
+			buf.WriteString(`\b`)
+		case r == 0x1b:
+			buf.WriteString(`\e`)
+		case r == '\f':
+			buf.WriteString(`\f`)
+		case r == '\n':
+			buf.WriteString(`\n`)
+		case r == '\r':
+			buf.WriteString(`\r`)
+		case r == '\t':
+			buf.WriteString(`\t`)
+		case r == '\v':
+			buf.WriteString(`\v`)
+		case r < 32:
+			fmt.Fprintf(&buf, `\x%04x`, r)
+		case r > 127:
+			if r > 0xFFFF {
+				// Surrogate pair
+				r -= 0x10000
+				high := 0xD800 + (r >> 10)
+				low := 0xDC00 + (r & 0x3FF)
+				fmt.Fprintf(&buf, `\x%04x\x%04x`, high, low)
+			} else {
+				fmt.Fprintf(&buf, `\x%04x`, r)
+			}
+		default:
+			buf.WriteRune(r)
+		}
+	}
+	return buf.String()
 }

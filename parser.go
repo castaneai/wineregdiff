@@ -19,6 +19,7 @@ var (
 	valuePattern           = regexp.MustCompile(`(".+"|@)=(.+)`)
 	archPattern            = regexp.MustCompile(`^#arch=(.+)`)
 	timePattern            = regexp.MustCompile(`^#time=([0-9a-fA-F]+)`)
+	classPattern           = regexp.MustCompile(`^#class="(.+)"`)
 )
 
 func Parse(r io.Reader) (Registry, error) {
@@ -65,11 +66,28 @@ func ParseFile(r io.Reader) (*RegistryFile, error) {
 			if subKey != nil {
 				matches := timePattern.FindStringSubmatch(line)
 				if len(matches) >= 2 {
-					rf.KeyMetadata[*subKey] = KeyMetadata{
-						Timestamp: currentTimestamp,
-						Time:      matches[1],
-					}
+					meta := rf.KeyMetadata[*subKey]
+					meta.Timestamp = currentTimestamp
+					meta.Time = matches[1]
+					rf.KeyMetadata[*subKey] = meta
 				}
+			}
+		// Key-level metadata: #class and #link
+		// https://github.com/wine-mirror/wine/blob/614887f33c5a0269d5e2feff6891e3e90d0f77ee/server/registry.c (load_key_option)
+		case strings.HasPrefix(line, "#class="):
+			if subKey != nil {
+				matches := classPattern.FindStringSubmatch(line)
+				if len(matches) >= 2 {
+					meta := rf.KeyMetadata[*subKey]
+					meta.Class = matches[1]
+					rf.KeyMetadata[*subKey] = meta
+				}
+			}
+		case line == "#link":
+			if subKey != nil {
+				meta := rf.KeyMetadata[*subKey]
+				meta.Link = true
+				rf.KeyMetadata[*subKey] = meta
 			}
 		case strings.HasPrefix(line, `"`) || strings.HasPrefix(line, string(UnnamedDataName)):
 			if subKey == nil {
@@ -187,10 +205,84 @@ func escapeString(s string) string {
 	return s
 }
 
+// parseQuotedString unescapes a Wine registry quoted string.
+// Wine uses C-style escapes: \\, \", \a, \b, \e, \f, \n, \r, \t, \v,
+// \xNNNN (1-4 hex digits for UTF-16 code unit), and \NNN (1-3 octal digits).
+// https://github.com/wine-mirror/wine/blob/614887f33c5a0269d5e2feff6891e3e90d0f77ee/server/unicode.c (parse_strW)
 func parseQuotedString(s string) string {
 	s = strings.TrimPrefix(s, `"`)
 	s = strings.TrimSuffix(s, `"`)
-	s = strings.ReplaceAll(s, `\"`, `"`)
-	s = strings.ReplaceAll(s, `\\`, `\`)
-	return s
+	var buf strings.Builder
+	buf.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' || i+1 >= len(s) {
+			buf.WriteByte(s[i])
+			continue
+		}
+		i++
+		switch s[i] {
+		case '\\':
+			buf.WriteByte('\\')
+		case '"':
+			buf.WriteByte('"')
+		case 'a':
+			buf.WriteByte('\a')
+		case 'b':
+			buf.WriteByte('\b')
+		case 'e':
+			buf.WriteByte(0x1b)
+		case 'f':
+			buf.WriteByte('\f')
+		case 'n':
+			buf.WriteByte('\n')
+		case 'r':
+			buf.WriteByte('\r')
+		case 't':
+			buf.WriteByte('\t')
+		case 'v':
+			buf.WriteByte('\v')
+		case 'x':
+			// \xNNNN: 1-4 hex digits
+			var val rune
+			digits := 0
+			for digits < 4 && i+1 < len(s) && isHexDigit(s[i+1]) {
+				val = val*16 + rune(hexVal(s[i+1]))
+				i++
+				digits++
+			}
+			if digits > 0 {
+				buf.WriteRune(val)
+			} else {
+				buf.WriteByte('x')
+			}
+		case '0', '1', '2', '3', '4', '5', '6', '7':
+			// \NNN: 1-3 octal digits
+			val := rune(s[i] - '0')
+			for digits := 1; digits < 3 && i+1 < len(s) && s[i+1] >= '0' && s[i+1] <= '7'; digits++ {
+				i++
+				val = val*8 + rune(s[i]-'0')
+			}
+			buf.WriteRune(val)
+		default:
+			buf.WriteByte(s[i])
+		}
+	}
+	return buf.String()
+}
+
+func isHexDigit(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+func hexVal(c byte) byte {
+	switch {
+	case c >= '0' && c <= '9':
+		return c - '0'
+	case c >= 'a' && c <= 'f':
+		return c - 'a' + 10
+	case c >= 'A' && c <= 'F':
+		return c - 'A' + 10
+	default:
+		return 0
+	}
 }
