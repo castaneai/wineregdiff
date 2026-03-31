@@ -169,16 +169,16 @@ func ParseData(s string) (Data, error) {
 	if strings.HasPrefix(s, `"`) {
 		return StringData(parseQuotedString(s)), nil
 	}
-	s = strings.ToLower(s)
-	if strings.HasPrefix(s, "dword:") {
-		d, err := strconv.ParseUint(strings.TrimPrefix(s, "dword:"), 16, 32)
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "dword:") {
+		d, err := strconv.ParseUint(lower[len("dword:"):], 16, 32)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse as REG_DWORD('%s'): %+v", s, err)
 		}
 		return DwordData(d), nil
 	}
-	if strings.HasPrefix(s, "hex:") {
-		data, err := parseHex(strings.TrimPrefix(s, "hex:"))
+	if strings.HasPrefix(lower, "hex:") {
+		data, err := parseHex(lower[len("hex:"):])
 		if err != nil {
 			return nil, err
 		}
@@ -186,7 +186,7 @@ func ParseData(s string) (Data, error) {
 	}
 	matches := stringTagPattern.FindStringSubmatch(s)
 	if len(matches) > 2 {
-		dt, err := strconv.ParseUint(matches[1], 16, 32)
+		dt, err := strconv.ParseUint(strings.ToLower(matches[1]), 16, 32)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse unknown type as hex('%s'): %+v", s, err)
 		}
@@ -196,11 +196,11 @@ func ParseData(s string) (Data, error) {
 			data := parseQuotedString(matches[2])
 			return ExpandStringData(data), nil
 		case DataTypeRegMultiSZ:
-			data := strings.Split(parseQuotedString(matches[2]), `\0`)
+			data := strings.Split(parseQuotedString(matches[2]), "\x00")
 			return MultiStringData(data), nil
 		}
 	}
-	matches = unknownDataTagPattern.FindStringSubmatch(s)
+	matches = unknownDataTagPattern.FindStringSubmatch(lower)
 	if len(matches) > 2 {
 		dataType, err := strconv.ParseUint(matches[1], 16, 32)
 		if err != nil {

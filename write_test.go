@@ -61,6 +61,79 @@ func TestWriteWineFormat_RoundTrip(t *testing.T) {
 	assert.Equal(t, original[Key("Software\\Test\\SubKey")][DataName("value")], parsed[Key("Software\\Test\\SubKey")][DataName("value")])
 }
 
+func TestWriteRegistryFile_LinkAndClass(t *testing.T) {
+	rf := &RegistryFile{
+		FileMetadata: FileMetadata{Arch: "win64"},
+		Registry: Registry{
+			Key("Software\\Classes\\Wow6432Node"): Value{
+				DataName("value"): StringData("test"),
+			},
+			Key("Software\\Normal"): Value{
+				DataName("value"): StringData("hello"),
+			},
+		},
+		KeyMetadata: map[Key]KeyMetadata{
+			Key("Software\\Classes\\Wow6432Node"): {
+				Timestamp: 1628790650,
+				Time:      "1dc6e34610bc106",
+				Class:     "Wow64Class",
+				Link:      true,
+			},
+			Key("Software\\Normal"): {
+				Timestamp: 1628790650,
+				Time:      "1dc6e34610bc106",
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := WriteRegistryFile(&buf, rf)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "#class=\"Wow64Class\"\n")
+	assert.Contains(t, output, "#link\n")
+
+	// Ensure #link does not appear for non-link keys
+	// Split by key headers and check the "Normal" section
+	sections := strings.Split(output, "\n\n")
+	for _, section := range sections {
+		if strings.Contains(section, "Normal") {
+			assert.NotContains(t, section, "#link")
+			assert.NotContains(t, section, "#class")
+		}
+	}
+}
+
+func TestWriteRegistryFile_LinkAndClass_RoundTrip(t *testing.T) {
+	rf := &RegistryFile{
+		Registry: Registry{
+			Key("Software\\Link"): Value{
+				DataName("value"): StringData("test"),
+			},
+		},
+		KeyMetadata: map[Key]KeyMetadata{
+			Key("Software\\Link"): {
+				Timestamp: 1628790650,
+				Time:      "1dc6e34610bc106",
+				Class:     "MyClass",
+				Link:      true,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := WriteRegistryFile(&buf, rf)
+	require.NoError(t, err)
+
+	parsed, err := ParseFile(&buf)
+	require.NoError(t, err)
+
+	meta := parsed.KeyMetadata[Key("Software\\Link")]
+	assert.Equal(t, "MyClass", meta.Class)
+	assert.True(t, meta.Link)
+}
+
 func TestEscapeWineKey(t *testing.T) {
 	// Backslashes are escaped
 	assert.Equal(t, `Software\\Test`, escapeWineKey(`Software\Test`))

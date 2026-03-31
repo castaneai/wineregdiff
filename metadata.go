@@ -14,6 +14,10 @@ type KeyMetadata struct {
 	Timestamp int64
 	// Time is the hex time value (e.g., "1dc6e34610bc106")
 	Time string
+	// Class is the registry key class string (from #class="...")
+	Class string
+	// Link indicates that the key is a symbolic link (#link)
+	Link bool
 }
 
 // RegistryFile represents a complete Wine registry file with metadata
